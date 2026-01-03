@@ -63,9 +63,9 @@ def set_theme(is_finance):
 FIN_ROLES = [
     'Analyste LCB-FT', 'Quant Risk Analyst', 'Auditeur Finance', 'Portfolio Analyst', 
     'Compliance Officer', 'Risk Manager', 'Analyste Crédit', 'Analyste ESG Quant', 
-    'Contrôleur Gestion Finance', 'Consultant Finance Stratégie',
-    'Auditeur Conformité', 'Analyste Transactionnel', 'Risk Controller', 
-    'KYC Specialist', 'Regulatory Reporting Analyst'
+    'Analyste financier', 'Analyste ESG', 'Auditeur Conformité', 
+    'Analyste Transactionnel', 'Risk Controller', 'Conseiller clientèle professionnelle', 
+    'Analyste KYC', 'Regulatory Reporting Analyst','Analyste crédit'
 ]
 FIN_SALARY = {
     "Big4 (Audit)": {"EY": 44, "KPMG": 46, "PwC": 45, "Deloitte": 48},
@@ -181,12 +181,12 @@ def scrape_strict(role, loc, weeks):
     try:
         hours = weeks * 168
         jobs = scrape_jobs(
-            site_name=["linkedin", "indeed", "glassdoor"],
+            site_name=["linkedin", "indeed", "glassdoor", "job-banque", "dogfinance", "welcome to the jungle", "efinancialcareers"],
             search_term=role,
             location=loc,
             results_wanted=20, # Higher count to allow filtering
             hours_old=hours,
-            country_indeed='france',
+            country_indeed='france','Luxembourg','Belgique',
             job_type="fulltime"
         )
         if jobs.empty: return pd.DataFrame()
@@ -203,7 +203,7 @@ def scrape_strict(role, loc, weeks):
 st.sidebar.markdown("## 👤 SÉLECTEUR DE PROFIL")
 profile = st.sidebar.radio(
     "Mode",
-    ["🚀 Finance Pro", "📢 Communication Pro"],
+    ["🚀 Finance", "📢 Communication"],
     label_visibility="collapsed"
 )
 
@@ -292,7 +292,7 @@ with tab1:
     st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
-    st.subheader("🔍 Recherche CDI Strict (Paris/IDF)")
+    st.subheader("🔍 Recherche CDI ")
     c1, c2, c3 = st.columns([2, 1, 1])
     with c1: selected_role = st.selectbox("Choisir le poste", roles)
     with c2: weeks = st.slider("Publié depuis (semaines)", 1, 5, 2)
@@ -312,7 +312,7 @@ with tab2:
                 st.warning("Aucun résultat strict trouvé.")
 
 with tab3:
-    st.subheader("🎤 Entraînement Technique & Situationnel")
+    st.subheader("Entraînement Technique & Situationnel")
     st.caption("Votre performance aux questions est enregistrée (Score Interviews).")
     
     q_idx = st.number_input("Question N°", 1, len(questions), 1) - 1
