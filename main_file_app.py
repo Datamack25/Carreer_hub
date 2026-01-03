@@ -65,7 +65,7 @@ FIN_ROLES = [
     'Compliance Officer', 'Risk Manager', 'Analyste Crédit', 'Analyste ESG Quant', 
     'Analyste financier', 'Analyste ESG', 'Auditeur Conformité', 
     'Analyste Transactionnel', 'Risk Controller', 'Conseiller clientèle professionnelle', 
-    'Analyste KYC', 'Regulatory Reporting Analyst', 'Analyste crédit'
+    'Analyste KYC', 'Regulatory Reporting Analyst'
 ]
 FIN_SALARY = {
     "Big4 (Audit)": {"EY": 44, "KPMG": 46, "PwC": 45, "Deloitte": 48},
@@ -162,39 +162,87 @@ def create_pdf(profile_name, roles, market_skills, user_skills, interview_score,
         
     return pdf.output(dest='S').encode('latin-1')
 
-def scrape_strict(role, loc, weeks):
-    # EXTENDED NEGATIVE KEYWORDS
-    # We filter out Internships AND irrelevant industries (Parfum, Cosmetics for Analyst roles, IT devs)
-    negative_kw = [
-        # Contract Types
-        "stage", "internship", "alternance", "apprenti", "apprentissage", "stagiaire", "interim", "seasonal",
-        # Irrelevant Roles/Industries for these profiles
-        "parfum", "cosmetic", "beauty", "sensoriel", "sensory", "olfactif", # User specific request
-        "vendeur", "sales associate", "conseiller de vente", "magasin", "boutique", # Retail
-        "chauffeur", "livreur", "ouvrier", "technicien de maintenance", # Blue collar
-        "medecin", "infirmier", "sante", "biologiste", # Medical
-        "architecte", "btp", "chantier", # Construction
-        # IT strict (unless it matches Quant which is preserved by positive matches usually, but let's be safe)
-        "technicien support", "helpdesk", "cobol", "java developer", "full stack" 
+def scrape_strict(role, loc, weeks, country="france", is_finance=True):
+    # --- 1. KEYWORDS DEFINITION (BEYOND THE SEARCH TERM) ---
+    # These must be present in the TITLE to be considered a match
+    CORE_FINANCE_KEYWORDS = [
+        "analyste", "finance", "audit", "conformité", "compliance", "risk", 
+        "portefeuille", "lcb", "kyc", "reporting", "contrôleur", "compliance", "aml"
     ]
+    CORE_COMM_KEYWORDS = [
+        "communication", "presse", "content", "social", "media", "rédacteur", 
+        "podcast", "évènementiel", "relations", "public", "contenu", "journaliste"
+    ]
+
+    # STRICT NEGATIVE KEYWORDS (Global + Anti-Drift)
+    negative_kw = [
+        "stage", "internship", "alternance", "apprenti", "apprentissage", "stagiaire", "interim",
+        "vendeur", "conseiller de vente", "boutique", "chauffeur", "livreur", "ouvrier", "magasinier"
+    ]
+    
+    if is_finance:
+        # Avoid Comm noise in Finance
+        negative_kw += ["journaliste", "rédacteur web", "community manager", "social media manager", "copywriter"]
+    else:
+        # Avoid Finance noise in Comm
+        negative_kw += ["analyste financier", "kyc analyst", "compliance officer", "lcb-ft", "audit externe", "accounting", "comptable"]
     
     try:
         hours = weeks * 168
-        jobs = scrape_jobs(
-            site_name=["linkedin", "indeed", "glassdoor", "job-banque", "dogfinance", "welcome to the jungle", "efinancialcareers"],
-            search_term=role,
-            location=loc,
-            results_wanted=20, # Higher count to allow filtering
-            hours_old=hours,
-            country_indeed='france', # Uniquement une chaîne autorisée ici
-            job_type="fulltime"
-        )
+        
+        # Site selection
+        sites = ["linkedin", "indeed", "google"]
+        if country != "Luxembourg": 
+            sites.append("glassdoor")
+            
+        country_map = {"France": "france", "Belgique": "belgium", "Luxembourg": "luxembourg"}
+        target_country = country_map.get(country, "france")
+        
+        # SEARCH EXECUTION
+        try:
+            jobs = scrape_jobs(
+                site_name=sites,
+                search_term=role,
+                location=loc,
+                results_wanted=100, # Maximize window to allow heavy filtering
+                hours_old=hours,
+                country_indeed=target_country,
+                job_type="fulltime"
+            )
+        except Exception as e:
+            st.warning(f"Recherche étendue limitée, bascule sur Google Jobs... ({e})")
+            jobs = scrape_jobs(
+                site_name=["google"],
+                search_term=role,
+                location=loc,
+                results_wanted=60,
+                hours_old=hours,
+                job_type="fulltime"
+            )
+            
         if jobs.empty: return pd.DataFrame()
         
-        # Filter Logic
-        clean_jobs = jobs[~jobs['title'].str.lower().str.contains('|'.join(negative_kw), na=False)]
-        return clean_jobs
-    except:
+        # --- 2. MULTI-LAYER ROBUST FILTERING ---
+        
+        # Layer A: Global Negative Filters (Remove junk)
+        df_filtered = jobs[~jobs['title'].str.lower().str.contains('|'.join(negative_kw), na=False)]
+        
+        # Layer B: Strict Path Validation (Title must match at least one CORE keyword for the path)
+        # This prevents "Communication Analyst" (Finance) appearing in Comm tab
+        valid_keywords = CORE_FINANCE_KEYWORDS if is_finance else CORE_COMM_KEYWORDS
+        
+        # Rule: The title OR the description must strongly relate to the target domain
+        df_filtered = df_filtered[
+            df_filtered['title'].str.lower().str.contains('|'.join(valid_keywords), na=False)
+        ]
+        
+        # Layer C: Final cleanup of non-CDI / temporary roles
+        # Jobspy doesn't always filter 'fulltime' perfectly
+        df_filtered = df_filtered[~df_filtered['title'].str.lower().str.contains("cdd|stage|alternance", na=False)]
+
+        return df_filtered
+    except Exception as e:
+        st.error(f"Erreur technique de recherche : {e}")
         return pd.DataFrame()
 
 # --- 4. MAIN APP LOGIC ---
@@ -292,15 +340,23 @@ with tab1:
     st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
-    st.subheader("🔍 Recherche CDI Strict (Paris/IDF)")
-    c1, c2, c3 = st.columns([2, 1, 1])
-    with c1: selected_role = st.selectbox("Choisir le poste", roles)
-    with c2: weeks = st.slider("Publié depuis (semaines)", 1, 5, 2)
-    with c3: loc = st.text_input("Localisation", "Paris, France")
+    st.subheader("🔍 Recherche CDI Multi-Sources (Filtre Strict)")
+    
+    # Indicateur des sites scrapés (Focus sur la stabilité totale)
+    sources_active = "LinkedIn, Indeed, Glassdoor, Google Jobs (Agrégateur mondial)"
+    
+    st.caption(f"📡 **Sources ultra-fiables pour {profile} :** {sources_active}")
+    
+    c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+    # On ajoute une clé unique basée sur is_finance pour forcer le reset du selectbox lors du changement de profil
+    with c1: selected_role = st.selectbox("Choisir le poste", roles, key=f"sel_role_{is_finance}")
+    with c2: country = st.selectbox("Pays", ["France", "Belgique", "Luxembourg"], key=f"sel_pays_{is_finance}")
+    with c3: weeks = st.slider("Publié depuis (semaines)", 1, 8, 4, key=f"sel_weeks_{is_finance}")
+    with c4: loc = st.text_input("Ville/Région", "Paris" if country == "France" else ("Bruxelles" if country == "Belgique" else "Luxembourg Ville"), key=f"sel_loc_{is_finance}")
     
     if st.button("Lancer Recherche", type="primary"):
-        with st.spinner(f"Chasse sur {weeks} semaines pour {selected_role}..."):
-            df_jobs = scrape_strict(selected_role, loc, weeks)
+        with st.spinner(f"Chasse sur {weeks} semaines pour {selected_role} en {country}..."):
+            df_jobs = scrape_strict(selected_role, loc, weeks, country, is_finance)
             if not df_jobs.empty:
                 st.success(f"{len(df_jobs)} CDI trouvés !")
                 st.data_editor(
