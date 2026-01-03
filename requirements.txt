@@ -1,0 +1,10 @@
+streamlit
+python-jobspy
+pandas
+numpy
+yfinance
+plotly
+pyportfolioopt
+PyPDF2
+google-generativeai
+fpdf
