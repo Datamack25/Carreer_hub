@@ -65,7 +65,7 @@ FIN_ROLES = [
     'Compliance Officer', 'Risk Manager', 'Analyste Crédit', 'Analyste ESG Quant', 
     'Analyste financier', 'Analyste ESG', 'Auditeur Conformité', 
     'Analyste Transactionnel', 'Risk Controller', 'Conseiller clientèle professionnelle', 
-    'Analyste KYC', 'Regulatory Reporting Analyst','Analyste crédit'
+    'Analyste KYC', 'Regulatory Reporting Analyst', 'Analyste crédit'
 ]
 FIN_SALARY = {
     "Big4 (Audit)": {"EY": 44, "KPMG": 46, "PwC": 45, "Deloitte": 48},
@@ -186,7 +186,7 @@ def scrape_strict(role, loc, weeks):
             location=loc,
             results_wanted=20, # Higher count to allow filtering
             hours_old=hours,
-            country_indeed='france','Luxembourg','Belgique',
+            country_indeed='france', # Uniquement une chaîne autorisée ici
             job_type="fulltime"
         )
         if jobs.empty: return pd.DataFrame()
@@ -292,7 +292,7 @@ with tab1:
     st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
-    st.subheader("🔍 Recherche CDI ")
+    st.subheader("🔍 Recherche CDI Strict (Paris/IDF)")
     c1, c2, c3 = st.columns([2, 1, 1])
     with c1: selected_role = st.selectbox("Choisir le poste", roles)
     with c2: weeks = st.slider("Publié depuis (semaines)", 1, 5, 2)
@@ -312,7 +312,7 @@ with tab2:
                 st.warning("Aucun résultat strict trouvé.")
 
 with tab3:
-    st.subheader("Entraînement Technique & Situationnel")
+    st.subheader("🎤 Entraînement Technique & Situationnel")
     st.caption("Votre performance aux questions est enregistrée (Score Interviews).")
     
     q_idx = st.number_input("Question N°", 1, len(questions), 1) - 1
